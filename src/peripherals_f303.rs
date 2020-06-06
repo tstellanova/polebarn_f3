@@ -11,7 +11,6 @@ use p_hal::stm32 as pac;
 
 use pac::{I2C1, USART1};
 
-use embedded_hal::blocking::delay::{DelayMs, DelayUs};
 use embedded_hal::digital::v2::OutputPin;
 
 
@@ -34,6 +33,9 @@ pub type Usart1PortType = p_hal::serial::Serial<
     ),
 >;
 
+pub type DelaySourceType = p_hal::delay::Delay;
+
+
 pub type Usart1RxType = p_hal::serial::Rx<pac::USART1>;
 // stm32f3xx_hal::serial::Rx<stm32f3::stm32f303::USART1>
 
@@ -44,7 +46,7 @@ pub(crate) fn setup() -> (
     ImuI2cPortType,
     GpioTypeUserLed1,
     Usart1PortType,
-    impl DelayMs<u8> + DelayUs<u32>,
+    DelaySourceType,
 ) {
     let dp = pac::Peripherals::take().unwrap();
     let cp = cortex_m::Peripherals::take().unwrap();

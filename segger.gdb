@@ -26,6 +26,7 @@ monitor semihosting enable
 
 load
 
+break handle_assert_failed
 #break rust_begin_unwind
 run
 

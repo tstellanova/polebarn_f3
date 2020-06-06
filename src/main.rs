@@ -17,24 +17,32 @@ use panic_rtt_core::{self, rprintln, rtt_init_print};
 use cortex_m_rt as rt;
 use rt::{entry};
 use cortex_m::interrupt::{self, Mutex};
-
+use lazy_static::{lazy_static};
 
 mod peripherals_f303;
 use peripherals_f303 as peripherals;
-use peripherals::{GpioTypeUserLed1, Usart1RxType};
+use peripherals::{DelaySourceType, GpioTypeUserLed1, Usart1RxType};
 
 use freertos_sys::cmsis_rtos2;
 use cmsis_rtos2::{osThreadId_t};
 use core::cell::RefCell;
-use core::ops::DerefMut;
+// use core::ops::DerefMut;
+use core::sync::atomic::{AtomicPtr, Ordering};
 
 use embedded_hal::digital::v2::ToggleableOutputPin;
-
+use embedded_hal::blocking::delay::DelayMs;
 
 // shared peripherals
-static USER_LED_1:  Mutex<RefCell< Option< GpioTypeUserLed1 >>> = Mutex::new(RefCell::new(None));
+// static USER_LED_1:  Mutex<RefCell< Option< GpioTypeUserLed1 >>> = Mutex::new(RefCell::new(None));
 static USART1_RX:  Mutex<RefCell< Option< Usart1RxType >>> = Mutex::new(RefCell::new(None));
 
+lazy_static! {
+    static ref THANGO: AtomicPtr<DelaySourceType> = AtomicPtr::default();
+    static ref USER_LED1: AtomicPtr<GpioTypeUserLed1> = AtomicPtr::default();
+}
+
+// static SHARED_GPIOTE: AtomicUsize = AtomicUsize::new(0);
+//            SHARED_GPIOTE.store(0, Ordering::Relaxed);
 
 #[no_mangle]
 extern "C" fn handle_assert_failed() {
@@ -45,37 +53,57 @@ extern "C" fn handle_assert_failed() {
 extern "C" fn start_default_task(_arg: *mut cty::c_void) {
     rprintln!("Start default task...");
 
-    interrupt::free(|cs| {
-        if let Some(ref mut led1) = USER_LED_1.borrow(cs).borrow_mut().deref_mut() {
-            led1.toggle().unwrap();
+    loop {
+        // interrupt::free(|cs| {
+        //     if let Some(ref mut led1) = USER_LED_1.borrow(cs).borrow_mut().deref_mut() {
+        //         led1.toggle().unwrap();
+        //     }
+        // });
+
+        unsafe {
+            USER_LED1.load(Ordering::Relaxed).as_mut().unwrap().toggle().unwrap();
+            THANGO.load(Ordering::Relaxed).as_mut().unwrap().delay_ms(100u8);
         }
-    });
+    }
 
-    // let core_peripherals = cortex_m::Peripherals::take().unwrap();
-    // let mut delay = interrupt::free(|cs| {
-    //     core_peripherals.SYST.delay(APP_CCDR.borrow(cs).borrow().as_ref().unwrap().clocks)
-    // });
+}
 
-    // loop {
-    //     // // look at user button and if it's NOT pressed, blink the user LEDs
-    //     // let user_butt_pressed = interrupt::free(|cs| {
-    //     //     USER_BUTT.borrow(cs).borrow().as_ref().unwrap().is_high().unwrap_or(false)
-    //     // });
-    //
-    //     if !user_butt_pressed {
-    //         toggle_leds();
-    //     }
-    //     else {
-    //         rprintln!(".");
-    //     }
-    //     // note: this delay is not accurate in debug mode with semihosting activated
-    //     delay.delay_ms(100_u32);
-    //     //TODO figure out why cmsis_rtos2::rtos_os_delay never fires?
-    // }
+#[no_mangle]
+extern "C" fn start_gps_listener_task(_arg: *mut cty::c_void) {
+
 }
 
 
-fn setup_rtos() -> osThreadId_t {
+/// Return the default task thread ID
+fn configure_tasks() -> osThreadId_t {
+    // We don't pass context to the default task here, since that involves problematic
+    // casting to/from C void pointers; instead, we use global static context.
+    let default_thread_id = cmsis_rtos2::rtos_os_thread_new(
+        Some(start_default_task),
+        core::ptr::null_mut(),
+        core::ptr::null(),
+    );
+
+    if default_thread_id.is_null() {
+        rprintln!( " default_thread new failed!");
+        return core::ptr::null_mut()
+    }
+
+    let gps_listener_thread_id = cmsis_rtos2::rtos_os_thread_new(
+        Some(start_gps_listener_task),
+        core::ptr::null_mut(),
+        core::ptr::null(),
+    );
+
+    if gps_listener_thread_id.is_null() {
+        rprintln!( "gps_listener_thread new failed!");
+        return core::ptr::null_mut();
+    }
+
+    default_thread_id
+}
+
+fn start_rtos() -> osThreadId_t {
     rprintln!( "Setup RTOS...");
 
     let _rc = cmsis_rtos2::rtos_kernel_initialize();
@@ -87,50 +115,32 @@ fn setup_rtos() -> osThreadId_t {
     let _sys_timer_hz = cmsis_rtos2::rtos_kernel_get_sys_timer_freq_hz();
     rprintln!("sys_timer_hz : {}", _sys_timer_hz);
 
-
-//  let default_task_attributes  = cmsis_rtos2::osThreadAttr_t {
-//    name: "defaultTask\0".as_ptr(),
-//    attr_bits: 0,
-//    cb_mem: core::ptr::null_mut(),
-//    cb_size: 0,
-//    stack_mem: core::ptr::null_mut(),
-//    stack_size: 128,
-//    priority:  cmsis_rtos2::osPriority_t_osPriorityNormal,
-//    tz_module: 0,
-//    reserved: 0,
-//  };
-
-    // We don't pass context to the default task here, since that involves problematic
-    // casting to/from C void pointers; instead, we use global static context.
-    let default_thread_id = cmsis_rtos2::rtos_os_thread_new(
-        Some(start_default_task),
-        core::ptr::null_mut(),
-        core::ptr::null(),
-//    &default_task_attributes
-    );
-
-    if default_thread_id.is_null() {
-        rprintln!( "rtos_os_thread_new failed!");
-        return core::ptr::null_mut()
+    let default_task_id = configure_tasks();
+    if default_task_id.is_null() {
+        rprintln!("configure_tasks failed!");
+        return default_task_id;
     }
-    rprintln!( "rtos_os_thread_new ok! ");
 
+    rprintln!("starting rtos...");
     let _rc = cmsis_rtos2::rtos_kernel_start();
     rprintln!( "kernel_start rc: {}", _rc);
 
     rprintln!("RTOS done!");
 
-    default_thread_id
+    default_task_id
 }
 
 fn setup_peripherals() {
 
-    let (_i2c_port, user_led1, usart1_port, _delay_source) = peripherals::setup();
+    let (_i2c_port, mut user_led1, usart1_port, mut delay_source) = peripherals::setup();
     let ( _usart1_tx,  usart1_rx)  = usart1_port.split();
 
     //store shared peripherals
     interrupt::free(|cs| {
-        USER_LED_1.borrow(cs).replace(Some(user_led1));
+        THANGO.store(&mut delay_source, Ordering::Relaxed);
+        USER_LED1.store(&mut user_led1, Ordering::Relaxed);
+
+        // USER_LED_1.borrow(cs).replace(Some(user_led1));
         USART1_RX.borrow(cs).replace(Some(usart1_rx));
     });
 }
@@ -141,7 +151,7 @@ fn main() -> ! {
     rprintln!("-- > MAIN --");
 
     setup_peripherals();
-    let _default_thread_id = setup_rtos();
+    let _default_thread_id = start_rtos();
 
     loop {
         cmsis_rtos2::rtos_os_thread_yield();

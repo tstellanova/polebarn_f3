@@ -14,3 +14,5 @@ freertos-sys = {git="https://github.com/tstellanova/freertos-sys", features=["st
 cty = "0.2.1"
 stm32f3 = {version = "0.10.0", features = ["stm32f303"]}
 stm32f3xx-hal = {version="0.4.3", features = ["rt", "stm32f303xc"] }
+lazy_static = {version="1.4.0", features=["spin_no_std"] }
+
