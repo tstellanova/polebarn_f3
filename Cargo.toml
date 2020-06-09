@@ -10,9 +10,15 @@ embedded-hal = "0.2.3"
 cortex-m = "0.6.0"
 cortex-m-rt = "0.6.11"
 panic-rtt-core = "0.1.1"
-freertos-sys = {git="https://github.com/tstellanova/freertos-sys", features=["stm32f3x"]}
+freertos-sys = {version="0.1.3", features=["stm32f3x","dbgsym"]}
+#freertos-sys = {git="https://github.com/tstellanova/freertos-sys", features=["stm32f3x"]}
 cty = "0.2.1"
-stm32f3 = {version = "0.10.0", features = ["stm32f303"]}
-stm32f3xx-hal = {version="0.4.3", features = ["rt", "stm32f303xc"] }
-lazy_static = {version="1.4.0", features=["spin_no_std"] }
+#lazy_static = {version="1.4.0", features=["spin_no_std"] }
+#ublox-core = "0.1.0"
+ublox-core = {path="../ublox-core"}
 
+# Cortex-M family specialization:
+stm32f3 = {version = "0.10.0", features = ["stm32f303"] }
+stm32f3xx-hal =  {version = "0.4.3", features = ["stm32f303", "rt"] }
+stm32f303cct6-robotdyn-bsp = "0.1.0"
+#stm32f303cct6-robotdyn-bsp = {path="../stm32f303cct6-robotdyn-bsp"}

@@ -14,7 +14,7 @@ monitor reset
 monitor speed auto
 
 # Setup GDB FOR FASTER DOWNLOADS
-#set remote memory-write-packet-size 1024
+set remote memory-write-packet-size 1024
 #set remote memory-write-packet-size fixed
 
 # don't confirm when quitting debugger
@@ -22,12 +22,12 @@ define hook-quit
     set confirm off
 end
 
-monitor semihosting enable
+# monitor semihosting enable
 
 load
 
 break handle_assert_failed
-#break rust_begin_unwind
+# break rust_begin_unwind
 run
 
 #stepi
